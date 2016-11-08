@@ -1,0 +1,3 @@
+To compile this core with optimisations for NTC CHIP, set the env variable to "linux-chip".
+E.g.:
+	platform=linux-chip make
