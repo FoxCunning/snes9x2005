@@ -96,6 +96,7 @@
 #include "gfx.h"
 #include "tile.h"
 
+
 extern uint32_t HeadMask [4];
 extern uint32_t TailMask [5];
 
@@ -220,12 +221,23 @@ static uint8_t ConvertTile(uint8_t* pCache, uint32_t TileAddr)
 #define PLOT_PIXEL(screen, pixel) (pixel)
 
 
-static void WRITE_4PIXELS16(int32_t Offset, uint8_t* Pixels, uint16_t* ScreenColors)
+static inline void WRITE_4PIXELS16(int32_t Offset, uint8_t* Pixels, uint16_t* ScreenColors)
 {
-   uint8_t  Pixel, N;
-   uint16_t* Screen = (uint16_t*) GFX.S + Offset;
-   uint8_t*  Depth = GFX.DB + Offset;
+   //uint8_t  Pixel, N;
+   register uint16_t* Screen = (uint16_t*) GFX.S + Offset;
+   register uint8_t*  Depth = GFX.DB + Offset;
 
+#define WRITE_1P16(N)	\
+	if (GFX.Z1 > Depth [N] && Pixels[N] != 0) {	\
+		Screen [N] = ScreenColors [ Pixels[N] ];	\
+		Depth [N] = GFX.Z2;	}
+
+	WRITE_1P16(0);
+	WRITE_1P16(1);
+	WRITE_1P16(2);
+	WRITE_1P16(3);
+	
+/*
    for (N = 0; N < 4; N++)
    {
       if (GFX.Z1 > Depth [N] && (Pixel = Pixels[N]))
@@ -234,15 +246,26 @@ static void WRITE_4PIXELS16(int32_t Offset, uint8_t* Pixels, uint16_t* ScreenCol
          Depth [N] = GFX.Z2;
       }
    }
+*/
 }
 
 static void WRITE_4PIXELS16_FLIPPED(int32_t Offset, uint8_t* Pixels,
                                     uint16_t* ScreenColors)
 {
-   uint8_t  Pixel, N;
+   //uint8_t  Pixel, N;
    uint16_t* Screen = (uint16_t*) GFX.S + Offset;
    uint8_t*  Depth = GFX.DB + Offset;
 
+#define WRITE_1P16F(N,P)	\
+	if (GFX.Z1 > Depth [N] && Pixels[P] != 0) {	\
+		Screen [N] = ScreenColors [ Pixels[P] ];	\
+		Depth [N] = GFX.Z2; }
+
+	WRITE_1P16F(0, 3);
+	WRITE_1P16F(1, 2);
+	WRITE_1P16F(2, 1);
+	WRITE_1P16F(3, 0);
+/*
    for (N = 0; N < 4; N++)
    {
       if (GFX.Z1 > Depth [N] && (Pixel = Pixels[3 - N]))
@@ -251,6 +274,7 @@ static void WRITE_4PIXELS16_FLIPPED(int32_t Offset, uint8_t* Pixels,
          Depth [N] = GFX.Z2;
       }
    }
+*/
 }
 
 static void WRITE_4PIXELS16_HALFWIDTH(int32_t Offset, uint8_t* Pixels,
@@ -289,10 +313,20 @@ static void WRITE_4PIXELS16_FLIPPED_HALFWIDTH(int32_t Offset, uint8_t* Pixels,
 
 static void WRITE_4PIXELS16x2(int32_t Offset, uint8_t* Pixels, uint16_t* ScreenColors)
 {
-   uint8_t  Pixel, N;
+   //uint8_t  Pixel, N;
    uint16_t* Screen = (uint16_t*) GFX.S + Offset;
    uint8_t*  Depth = GFX.DB + Offset;
 
+#define WRITE_4P16x2(D,P,N) \
+	if (GFX.Z1 > Depth[N] && Pixels[N] != 0) {	\
+	Screen [D] = Screen [P] = ScreenColors [Pixels[N]];	\
+	Depth [D] = Depth [P] = GFX.Z2; }
+
+	WRITE_4P16x2(0, 1, 0);
+	WRITE_4P16x2(2, 3, 1);
+	WRITE_4P16x2(4, 5, 2);
+	WRITE_4P16x2(6, 7, 3);
+/*
    for (N = 0; N < 4; N++)
    {
       if (GFX.Z1 > Depth [N] && (Pixel = Pixels[N]))
@@ -301,6 +335,7 @@ static void WRITE_4PIXELS16x2(int32_t Offset, uint8_t* Pixels, uint16_t* ScreenC
          Depth [N * 2] = Depth [N * 2 + 1] = GFX.Z2;
       }
    }
+*/
 }
 
 static void WRITE_4PIXELS16_FLIPPEDx2(int32_t Offset, uint8_t* Pixels,
@@ -465,6 +500,18 @@ void DrawLargePixel16HalfWidth(uint32_t Tile, int32_t Offset,
    RENDER_TILE_LARGE_HALFWIDTH(ScreenColors [pixel], PLOT_PIXEL)
 }
 
+#define SCREEN_WRITE_ADD(N,P) \
+         if (GFX.Z1 > Depth [N] && Pixels[P] != 0)	\
+         {	\
+         	if (SubDepth [N] == 0)	\
+         		Screen [N] = ScreenColors[Pixels[P]];	\
+         	else if (SubDepth [N] == 1)	\
+         		Screen [N] = COLOR_ADD(ScreenColors [Pixels[P]], GFX.FixedColour);	\
+         	else	\
+         		Screen [N] = COLOR_ADD(ScreenColors [Pixels[P]], Screen [GFX.Delta + N]);	\
+         	Depth [N] = GFX.Z2;	\
+         }
+
 static void WRITE_4PIXELS16_ADD(int32_t Offset, uint8_t* Pixels,
                                 uint16_t* ScreenColors)
 {
@@ -474,6 +521,12 @@ static void WRITE_4PIXELS16_ADD(int32_t Offset, uint8_t* Pixels,
    uint8_t*  Depth = GFX.ZBuffer + Offset;
    uint8_t*  SubDepth = GFX.SubZBuffer + Offset;
 
+	SCREEN_WRITE_ADD(0, 0);
+	SCREEN_WRITE_ADD(1, 1);
+	SCREEN_WRITE_ADD(2, 2);
+	SCREEN_WRITE_ADD(3, 3);
+
+/*
    for (N = 0; N < 4; N++)
    {
       if (GFX.Z1 > Depth [N] && (Pixel = Pixels[N]))
@@ -493,6 +546,7 @@ static void WRITE_4PIXELS16_ADD(int32_t Offset, uint8_t* Pixels,
          Depth [N] = GFX.Z2;
       }
    }
+*/
 }
 
 static void WRITE_4PIXELS16_FLIPPED_ADD(int32_t Offset, uint8_t* Pixels,
@@ -504,6 +558,12 @@ static void WRITE_4PIXELS16_FLIPPED_ADD(int32_t Offset, uint8_t* Pixels,
    uint8_t*  Depth = GFX.ZBuffer + Offset;
    uint8_t*  SubDepth = GFX.SubZBuffer + Offset;
 
+	SCREEN_WRITE_ADD(0, 3);
+	SCREEN_WRITE_ADD(1, 2);
+	SCREEN_WRITE_ADD(2, 1);
+	SCREEN_WRITE_ADD(3, 0);
+	
+/*
    for (N = 0; N < 4; N++)
    {
       if (GFX.Z1 > Depth [N] && (Pixel = Pixels[3 - N]))
@@ -523,6 +583,7 @@ static void WRITE_4PIXELS16_FLIPPED_ADD(int32_t Offset, uint8_t* Pixels,
          Depth [N] = GFX.Z2;
       }
    }
+*/
 }
 
 static void WRITE_4PIXELS16_ADD1_2(int32_t Offset, uint8_t* Pixels,
@@ -704,12 +765,13 @@ static void WRITE_4PIXELS16_FLIPPED_SUB1_2(int32_t Offset, uint8_t* Pixels,
 }
 
 
+
+
 void DrawTile16Add(uint32_t Tile, int32_t Offset, uint32_t StartLine,
                    uint32_t LineCount)
 {
    TILE_PREAMBLE
-   uint8_t* bp;
-   uint8_t  Pixel;
+   uint8_t* Pixels;
    uint16_t* Screen = (uint16_t*) GFX.S + Offset;
    uint8_t*  Depth = GFX.ZBuffer + Offset;
    uint8_t*  SubDepth = GFX.SubZBuffer + Offset;
@@ -717,111 +779,63 @@ void DrawTile16Add(uint32_t Tile, int32_t Offset, uint32_t StartLine,
    switch (Tile & (V_FLIP | H_FLIP))
    {
    case 0:
-      bp = pCache + StartLine;
+      Pixels = pCache + StartLine;
       for (l = LineCount; l != 0;
-            l--, bp += 8, Screen += GFX.PPL, Depth += GFX.PPL, SubDepth += GFX.PPL)
+            l--, Pixels += 8, Screen += GFX.PPL, Depth += GFX.PPL, SubDepth += GFX.PPL)
       {
-         uint8_t N;
-         for (N = 0; N < 8; N++)
-         {
-            if (GFX.Z1 > Depth [N] && (Pixel = bp[N]))
-            {
-               switch (SubDepth [N])
-               {
-               case 0:
-                  Screen [N] = ScreenColors [Pixel];
-                  break;
-               case 1:
-                  Screen [N] = COLOR_ADD(ScreenColors [Pixel], GFX.FixedColour);
-                  break;
-               default:
-                  Screen [N] = COLOR_ADD(ScreenColors [Pixel], Screen [GFX.Delta + N]);
-                  break;
-               }
-               Depth [N] = GFX.Z2;
-            }
-         }
+      	SCREEN_WRITE_ADD(0, 0);
+      	SCREEN_WRITE_ADD(1, 1);
+      	SCREEN_WRITE_ADD(2, 2);
+      	SCREEN_WRITE_ADD(3, 3);
+      	SCREEN_WRITE_ADD(4, 4);
+      	SCREEN_WRITE_ADD(5, 5);
+      	SCREEN_WRITE_ADD(6, 6);
+      	SCREEN_WRITE_ADD(7, 7);
       }
       break;
    case H_FLIP:
-      bp = pCache + StartLine;
+      Pixels = pCache + StartLine;
       for (l = LineCount; l != 0;
-            l--, bp += 8, Screen += GFX.PPL, Depth += GFX.PPL, SubDepth += GFX.PPL)
+            l--, Pixels += 8, Screen += GFX.PPL, Depth += GFX.PPL, SubDepth += GFX.PPL)
       {
-         uint8_t N;
-         for (N = 0; N < 8; N++)
-         {
-            if (GFX.Z1 > Depth [N] && (Pixel = bp[7 - N]))
-            {
-               switch (SubDepth [N])
-               {
-               case 0:
-                  Screen [N] = ScreenColors [Pixel];
-                  break;
-               case 1:
-                  Screen [N] = COLOR_ADD(ScreenColors [Pixel], GFX.FixedColour);
-                  break;
-               default:
-                  Screen [N] = COLOR_ADD(ScreenColors [Pixel], Screen [GFX.Delta + N]);
-                  break;
-               }
-               Depth [N] = GFX.Z2;
-            }
-         }
+      	SCREEN_WRITE_ADD(0, 7);
+      	SCREEN_WRITE_ADD(1, 6);
+      	SCREEN_WRITE_ADD(2, 5);
+      	SCREEN_WRITE_ADD(3, 4);
+      	SCREEN_WRITE_ADD(4, 3);
+      	SCREEN_WRITE_ADD(5, 2);
+      	SCREEN_WRITE_ADD(6, 1);
+      	SCREEN_WRITE_ADD(7, 0);
       }
       break;
    case H_FLIP | V_FLIP:
-      bp = pCache + 56 - StartLine;
+      Pixels = pCache + 56 - StartLine;
       for (l = LineCount; l != 0;
-            l--, bp -= 8, Screen += GFX.PPL, Depth += GFX.PPL, SubDepth += GFX.PPL)
+            l--, Pixels -= 8, Screen += GFX.PPL, Depth += GFX.PPL, SubDepth += GFX.PPL)
       {
-         uint8_t N;
-         for (N = 0; N < 8; N++)
-         {
-            if (GFX.Z1 > Depth [N] && (Pixel = bp[7 - N]))
-            {
-               switch (SubDepth [N])
-               {
-               case 0:
-                  Screen [N] = ScreenColors [Pixel];
-                  break;
-               case 1:
-                  Screen [N] = COLOR_ADD(ScreenColors [Pixel], GFX.FixedColour);
-                  break;
-               default:
-                  Screen [N] = COLOR_ADD(ScreenColors [Pixel], Screen [GFX.Delta + N]);
-                  break;
-               }
-               Depth [N] = GFX.Z2;
-            }
-         }
+      	SCREEN_WRITE_ADD(0, 7);
+      	SCREEN_WRITE_ADD(1, 6);
+      	SCREEN_WRITE_ADD(2, 5);
+      	SCREEN_WRITE_ADD(3, 4);
+      	SCREEN_WRITE_ADD(4, 3);
+      	SCREEN_WRITE_ADD(5, 2);
+      	SCREEN_WRITE_ADD(6, 1);
+      	SCREEN_WRITE_ADD(7, 0);
       }
       break;
    case V_FLIP:
-      bp = pCache + 56 - StartLine;
+      Pixels = pCache + 56 - StartLine;
       for (l = LineCount; l != 0;
-            l--, bp -= 8, Screen += GFX.PPL, Depth += GFX.PPL, SubDepth += GFX.PPL)
+            l--, Pixels -= 8, Screen += GFX.PPL, Depth += GFX.PPL, SubDepth += GFX.PPL)
       {
-         uint8_t N;
-         for (N = 0; N < 8; N++)
-         {
-            if (GFX.Z1 > Depth [N] && (Pixel = bp[N]))
-            {
-               switch (SubDepth [N])
-               {
-               case 0:
-                  Screen [N] = ScreenColors [Pixel];
-                  break;
-               case 1:
-                  Screen [N] = COLOR_ADD(ScreenColors [Pixel], GFX.FixedColour);
-                  break;
-               default:
-                  Screen [N] = COLOR_ADD(ScreenColors [Pixel], Screen [GFX.Delta + N]);
-                  break;
-               }
-               Depth [N] = GFX.Z2;
-            }
-         }
+      	SCREEN_WRITE_ADD(0, 0);
+      	SCREEN_WRITE_ADD(1, 1);
+      	SCREEN_WRITE_ADD(2, 2);
+      	SCREEN_WRITE_ADD(3, 3);
+      	SCREEN_WRITE_ADD(4, 4);
+      	SCREEN_WRITE_ADD(5, 5);
+      	SCREEN_WRITE_ADD(6, 6);
+      	SCREEN_WRITE_ADD(7, 7);
       }
       break;
    default:
