@@ -50,6 +50,17 @@ ifeq ($(platform), unix)
 
    CFLAGS += -fno-builtin \
             -fno-exceptions -ffunction-sections
+else ifeq ($(platform), linux-chip)
+   TARGET := $(TARGET_NAME)_libretro.so
+   fpic := -fPIC
+   SHARED := -shared -Wl,--no-undefined -Wl,--version-script=link.T
+   CC = $(CROSS_COMPILE)gcc
+   CXX = $(CROSS_COMPILE)g++
+   CPP = $(CROSS_COMPILE)cpp
+   AS = $(CROSS_COMPILE)as
+   AR = $(CROSS_COMPILE)ar
+   LD = $(CROSS_COMPILE)ld
+   CFLAGS += -march=armv7-a -mtune=cortex-a8 -mfpu=neon -mvectorize-with-neon-quad -mfloat-abi=hard -ftree-vectorize -ffast-math -funsafe-math-optimizations
 else ifeq ($(platform), linux-portable)
    TARGET := $(TARGET_NAME)_libretro.so
    fpic := -fPIC -nostdlib
@@ -257,6 +268,9 @@ ifeq ($(STATIC_LINKING), 1)
 else
 	$(CC) -o $@ $^ $(LDFLAGS)
 endif
+
+source/tile.o: CFLAGS += -funroll-loops
+source/gfx.o: CFLAGS += -funroll-loops
 
 %.o: %.cpp
 	$(CXX) -c -o $@ $< $(CXXFLAGS)
